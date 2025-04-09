@@ -506,7 +506,6 @@ Function call:
         self.parser.SyntaxErrors = []
 
 
-
     def enteringErrorsOfSyntax(self, syntaxErrors):
         # For a Listbox widget, use numeric indices.
         self.errors_list.delete(0, tk.END)
@@ -554,10 +553,17 @@ Function call:
         # Clear previous output
         self.errors_list.delete(0, tk.END)
         
-        # Display errors if found, else show completion message and enable code generation.
+        # Display errors if found, else show success message and enable code generation.
         if errors:
             for line in errors:
-                self.errors_list.insert(tk.END, line)
+                # Attempt to convert the line to a float and format if possible;
+                # if conversion fails, show the original line.
+                try:
+                    num = float(line)
+                    formatted_line = f"{num:.5f}"
+                except ValueError:
+                    formatted_line = line
+                self.errors_list.insert(tk.END, formatted_line)
             # Disable the Generate Code button if errors are present.
             self.codegen_button.configure(state="disabled")
         else:
@@ -605,11 +611,21 @@ Function call:
         if output:
             if isinstance(output, list):
                 for line in output:
-                    self.errors_list.insert(tk.END, line)
+                    try:
+                        num = float(line)
+                        formatted_line = f"{num:.5f}"
+                    except ValueError:
+                        formatted_line = line
+                    self.errors_list.insert(tk.END, formatted_line)
                     if ("Semantic Error" in line) or ("Runtime Error" in line):
                         errors_found = True
             else:
-                self.errors_list.insert(tk.END, output)
+                try:
+                    num = float(output)
+                    formatted_output = f"{num:.5f}"
+                except ValueError:
+                    formatted_output = output
+                self.errors_list.insert(tk.END, formatted_output)
                 if ("Semantic Error" in output) or ("Runtime Error" in output):
                     errors_found = True
         else:

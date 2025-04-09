@@ -94,28 +94,49 @@ class DEDOSSemantic:
     def parameter(self):
         try:
             start = self.c2 + 1
-            while self.c1 != '<parameter->': # Getting the parameter values
+            while self.c1 != '<parameter->':  # Getting the parameter values
                 self.next()
             if '<parameter->' == self.c1:
                 end = self.c2
-            param_values = self.value[start:end] # Storing the parameter values
-            if param_values == []: # if no parameter return Null string
+            param_values = self.value[start:end]  # Storing the parameter values
+            if param_values == []:  # if no parameter, return empty string
                 return ''
             param_str = "".join(param_values)  # make the parameter into string
-            param_orig = param_str
-            param_str = (self.replace_variables(param_str, self.GlobalVar))
+            param_orig = param_str  # Save original text (e.g. it might include quotes or #x)
+            
+            # Do your normal variable replacement
+            param_str = self.replace_variables(param_str, self.GlobalVar)
             if len(param_str) == 3 and param_str.count("\'") == 2:
                 param_str = param_str.replace("\'", "\"")
-            if '-' in param_str:  # make _ to - for negative numbers
+            if '-' in param_str:  # preserve '-' for negative numbers
                 param_str = str(param_str.replace('-', '-'))
-            param_str = self.replace_variables(param_str, self.GlobalVar)  # replace the id in param_str with value
+            param_str = self.replace_variables(param_str, self.GlobalVar)
             param_str = param_str.replace("\n", "\\n").replace('True', 'pos').replace('False', 'neg').replace('-', '-')
+            
+            # === NEW GLOBAL VARIABLE CHECK ===
+            # For each variable in GlobalVar that appears in the original parameter text,
+            # check if that variable’s value is a string (i.e. declared with strike).
+            # If so, and if the arithmetic operators %, /, or a binary minus appear in the expression,
+            # then report a semantic error.
+
+            for var in self.GlobalVar:
+                if var in param_orig:
+                    # Here we assume that variables declared with strike are stored as strings.
+                    if isinstance(self.GlobalVar[var], str):
+                        # Check if an arithmetic operator is present in the evaluated parameter expression.
+                        if "%" in param_str or "/" in param_str or re.search(r"\s-\s", param_str):
+                            self.Output.append(
+                                f"|||Semantic Error: operator used on strike type variable '{var}' is not allowed: Line {self.line_ctr(self.c2)}"
+                            )
+                            return ""
+            # === END NEW GLOBAL VARIABLE CHECK ===
+            
             try:
                 try:
-                    param_tuple = (eval(param_str.replace("-", "-"), None, self.tool))  # Try to evaluate the param_str
+                    param_tuple = eval(param_str.replace("-", "-"), None, self.tool)  # Evaluate the parameter string
                 except:
                     printerr = []
-                    parama = eval(param_str.replace("-","-"), None, self.tool)
+                    parama = eval(param_str.replace("-", "-"), None, self.tool)
                     for item in parama:
                         item = str(item)
                         try:
@@ -124,39 +145,54 @@ class DEDOSSemantic:
                         except:
                             if item.count('#') == 1:
                                 self.Output.append(
-                                    f"|||Semantic Error: Undeclared Variable: Line {self.line_ctr(self.c2)}")
+                                    f"|||Semantic Error: Undeclared Variable: Line {self.line_ctr(self.c2)}"
+                                )
                             try:
-                                a = eval(item.replace("-","-"), None, self.tool)
+                                a = eval(item.replace("-", "-"), None, self.tool)
                             except Exception as e:
                                 a = str(e)
                                 b = a.replace('int', 'inst').replace('str', 'strike').replace('float', 'flank')
-                                if a == "unsupported operand type(s) for +: 'int' and 'str'":
-                                    # self.Output.append(f"|||Semantic Error: parameter in \"plant({param_orig})\" {b}: Line {self.line_ctr(self.c2)}")
+                                if a == "unsupported operand type(s) for %: 'str' and 'int'":
                                     self.Output.append(f"|||Semantic Error: {b}: Line {self.line_ctr(self.c2)}")
-                                elif a == 'can only concatenate str (not "int") to str' or a == 'can only concatenate str (not "float") to str':
-                                    # self.Output.append(f"|||Semantic Error: parameter in plant({param_orig}) {b}: Line {self.line_ctr(self.c2)}")
+                                elif a == "unsupported operand type(s) for /: 'str' and 'int'":
+                                    self.Output.append(f"|||Semantic Error: {b}: Line {self.line_ctr(self.c2)}")
+                                elif a == "unsupported operand type(s) for -: 'str' and 'int'":
+                                    self.Output.append(f"|||Semantic Error: {b}: Line {self.line_ctr(self.c2)}")
+                                elif a == "unsupported operand type(s) for +: 'int' and 'str'":
+                                    self.Output.append(f"|||Semantic Error: {b}: Line {self.line_ctr(self.c2)}")
+                                elif a in ['can only concatenate str (not "int") to str', 'can only concatenate str (not "float") to str']:
                                     self.Output.append(f"|||Semantic Error: {b}: Line {self.line_ctr(self.c2)}")
                                 elif a == "unsupported operand type(s) for +: 'float' and 'str'":
                                     self.Output.append(f"|||Semantic Error: {b}: Line {self.line_ctr(self.c2)}")
                                 elif a == 'can only concatenate list (not "int") to list':
                                     self.Output.append(
-                                        f"|||Semantic Error: Whole arrays cannot be used in math expressions: Line {self.line_ctr(self.c2)}")
+                                        f"|||Semantic Error: Whole arrays cannot be used in math expressions: Line {self.line_ctr(self.c2)}"
+                                    )
                                 elif "unmatched ']'" in a or "list index out of range" in a:
                                     self.Output.append(f"|||Semantic Error: Array Index range exceeded: Line {self.line_ctr(self.c2)}")
-                                item = '\"' + item.replace('"', '')+ '\"'
-                                a = eval(item.replace("-","-"), None, self.tool)
-                            printerr.append(str(a))
+                                else:
+                                    if item.count('#') >= 1:
+                                        self.Output.append(
+                                            f"|||Semantic Error: Undeclared Variable: Line {self.line_ctr(self.c2)}"
+                                        )
+                                    else:
+                                        item = '\"' + item.replace('"', '') + '\"'
+                                        a = eval(item.replace("-", "-"), None, self.tool)
+                                printerr.append(str(a))
                     param_str = '\"' + "".join(printerr) + '\"'
-                    param_tuple = eval(param_str.replace("\n", "\\n").replace("\t", "\\t") , None, self.tool)  # Try to evaluate the param_str
+                    param_tuple = eval(param_str.replace("\n", "\\n").replace("\t", "\\t"), None, self.tool)
             except Exception as e:
-                print(e)
                 a = str(e)
                 b = a.replace('int', 'inst').replace('str', 'strike').replace('float', 'flank')
-                if a == "unsupported operand type(s) for +: 'int' and 'str'":
-                    #self.Output.append(f"|||Semantic Error: parameter in \"plant({param_orig})\" {b}: Line {self.line_ctr(self.c2)}")
+                if a == "unsupported operand type(s) for %: 'str' and 'int'":
                     self.Output.append(f"|||Semantic Error: {b}: Line {self.line_ctr(self.c2)}")
-                elif a == 'can only concatenate str (not "int") to str' or a == 'can only concatenate str (not "float") to str':
-                    #self.Output.append(f"|||Semantic Error: parameter in plant({param_orig}) {b}: Line {self.line_ctr(self.c2)}")
+                elif a == "unsupported operand type(s) for /: 'str' and 'int'":
+                    self.Output.append(f"|||Semantic Error: {b}: Line {self.line_ctr(self.c2)}")
+                elif a == "unsupported operand type(s) for -: 'str' and 'int'":
+                    self.Output.append(f"|||Semantic Error: {b}: Line {self.line_ctr(self.c2)}")
+                elif a == "unsupported operand type(s) for +: 'int' and 'str'":
+                    self.Output.append(f"|||Semantic Error: {b}: Line {self.line_ctr(self.c2)}")
+                elif a in ['can only concatenate str (not "int") to str', 'can only concatenate str (not "float") to str']:
                     self.Output.append(f"|||Semantic Error: {b}: Line {self.line_ctr(self.c2)}")
                 elif a == "unsupported operand type(s) for +: 'float' and 'str'":
                     self.Output.append(f"|||Semantic Error: {b}: Line {self.line_ctr(self.c2)}")
@@ -166,16 +202,14 @@ class DEDOSSemantic:
                     self.Output.append(f"|||Semantic Error: Whole arrays cannot be used in math expressions: Line {self.line_ctr(self.c2)}")
                 else:
                     if param_str.count('#') >= 1:
-                        self.Output.append(
-                            f"|||Semantic Error: Undeclared Variable: Line {self.line_ctr(self.c2)}")
+                        self.Output.append(f"|||Semantic Error: Undeclared Variable: Line {self.line_ctr(self.c2)}")
                     else:
                         param_str = '\"' + "".join(param_str).replace('"','') + '\"'
                         param_tuple = eval(param_str.replace("\n", "\\n").replace("\t", "\\t"), None, self.tool)
-            if isinstance(param_tuple, tuple):  # Check if param_tuple is a single item
+            if isinstance(param_tuple, tuple):
                 param_str = "".join(str(item) for item in param_tuple)
             else:
-                param_str = str(param_tuple)  # if n"ot tuple convert to string directly
-
+                param_str = str(param_tuple)
             param_fixed = param_str.replace('True', 'pos').replace('False', 'neg').replace('-', '-')
             return param_fixed
         except Exception as e:
