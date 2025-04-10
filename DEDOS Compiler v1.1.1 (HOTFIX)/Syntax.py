@@ -526,7 +526,7 @@ class DEDOSParser:
             else:
                 print("SYNTAX ERROR 18: Unexpected", self.currentvalues, self.lineCounter)
                 self.SyntaxErrors.append(
-                    f'LINE #{self.lineCounter} : Unexpected ⏵ "{self.currentvalues}" \n\nExpected ⏵ "+", "-", "*", "/", "%", ")", "plant", "re", "force", "watch", "defuse", "~", "globe", "inst", "flank", "strike", "chat", "tool", "bounce", "back", "abort", "push", "COMMA", "]", "<", ">", "<=", ">=", "==", "!=", "and", "or", "IDENTIFIER", "}}"')  # put error in a list for viewing in GUI:
+                    f'LINE #{self.lineCounter} : Unexpected ⏵ "{self.currentvalues}" \n\nExpected ⏵ "COMMA"')  # put error in a list for viewing in GUI:
         else:
             print("SYNTAX ERROR 18.1: Unexpected", self.currentvalues, self.lineCounter)
             self.SyntaxErrors.append(

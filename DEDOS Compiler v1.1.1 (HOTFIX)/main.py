@@ -461,58 +461,49 @@ Function call:
         self.parser = DEDOSParser(self.lexer.tokens)
         self.parser.ListToDict()
         
-        # Try to run the parser. If an IndexError occurs, capture and log the error location using a line counter.
+        # Try to run the parser. If an IndexError occurs, capture and log the error location.
         try:
             self.parser.GetNextTerminal()
         except IndexError as e:
-            # Compute the current line number by iterating over tokens up to the error position
-            line_counter = 1
-            for idx in range(self.parser.position):
-                token = self.lexer.tokens[idx]
-                if " : " in token:
-                    # The token is expected to be in the form "TOKEN_TYPE : lexeme_value"
-                    _, lexeme_value = token.split(" : ", 1)
-                    if "\n" in lexeme_value:
-                        # Increase by the number of newline characters encountered in the lexeme
-                        line_counter += lexeme_value.count("\n")
-                    else:
-                        # Otherwise, assume the token occupies one line
-                        line_counter += 1
-                else:
-                    line_counter += 1
-
-            # Since we don't compute column reliably with this counter, we'll leave it as "unknown"
-            column = "unknown"
-            error_message = f"Syntax Error at line {line_counter}, column {column}: {str(e)}"
+            # Attempt to extract location from the last token processed
+            if self.parser.position > 0 and self.lexer.tokens:
+                token = self.lexer.tokens[self.parser.position - 1]
+                line = getattr(token, "line", "unknown")
+                column = getattr(token, "column", "unknown")
+            else:
+                line = "unknown"
+                column = "unknown"
+            error_message = f"Syntax Error at line {line}, column {column}: {str(e)}"
             # Append the error as a tuple (message, line, column)
-            self.parser.SyntaxErrors.append((error_message, line_counter, column))
+            self.parser.SyntaxErrors.append((error_message, line, column))
             print(error_message)
         
         syntaxErrors = self.parser.SyntaxErrors
         print("Raw Syntax Errors:", syntaxErrors)  # Debugging
 
-        # Display only the nearest (first) syntax error in the GUI
+        # Display all syntax errors in the GUI and print them in the console.
         if syntaxErrors:
-            nearest_error = syntaxErrors[0]
-            if isinstance(nearest_error, tuple) and len(nearest_error) == 3:
-                error_message, line, column = nearest_error
-                formatted_error = f"Syntax Error at line {line}, column {column}: {error_message}"
-            else:
-                formatted_error = str(nearest_error)
-            self.errors_list.insert(tk.END, formatted_error)
-            print(formatted_error)  # Print the nearest error with location
-            # Disable semantic analysis button if there is an error
-            self.semantic_button.configure(state="disabled")
-        else:
-            # If no error, enable the semantic analysis button and run semantic analysis.
+            for error in syntaxErrors:
+                if isinstance(error, tuple) and len(error) == 3:
+                    # Error format: (message, line, column)
+                    error_message, line, column = error
+                    formatted_error = f"Syntax Error at line {line}, column {column}: {error_message}"
+                else:
+                    formatted_error = str(error)
+                self.errors_list.insert(tk.END, formatted_error)
+                print(formatted_error)  # Print each syntax error with location
+
+        # Check for success (using a search in the error messages if the success message is embedded)
+        if syntaxErrors and any("SYNTAX COMPILE SUCCESSFUL" in (err if isinstance(err, str) else err[0]) for err in syntaxErrors):
             print("Syntax analysis succeeded, enabling semantic analysis.")
-            self.semantic_button.configure(state="normal")
+            self.semantic_button.configure(state="normal")  # Enable semantic button
             self.analyze_semantic()
+        else:
+            print("Syntax analysis failed or did not return the expected compilation.")
+            self.semantic_button.configure(state="disabled")  # Ensure semantic button is disabled
 
         # Clear syntax errors for subsequent runs.
         self.parser.SyntaxErrors = []
-
-
 
 
     def enteringErrorsOfSyntax(self, syntaxErrors):
@@ -606,34 +597,15 @@ Function call:
 
         # Create the semantic analyzer instance.
         sem = Semantic.DEDOSSemantic(Terminals, Sequence)
-
+        
         # Run semantic processing.
         sem.keyval_fix()
         sem.token_type()
-
+        
         # Retrieve output from the semantic analyzer.
         output = sem.Output
-
-        # --- Filtering step ---
-        # If output is a list, remove all occurrences of "(" from each element.
-        if output:
-            if isinstance(output, list):
-                filtered_output = []
-                for item in output:
-                    if isinstance(item, str):
-                        # Remove any '(' characters from the string
-                        new_item = item.replace('(', '')
-                        # Optionally, if you want to completely discard lines that are only '(':
-                        if new_item.strip() != "":
-                            filtered_output.append(new_item)
-                    else:
-                        filtered_output.append(item)
-                output = filtered_output
-            elif isinstance(output, str):
-                # Remove any '(' in a string output.
-                output = output.replace('(', '')
-
-        # Print the final (filtered) output in the error output box.
+        
+        # Print the output in the error output box.
         self.errors_list.delete(0, tk.END)
         errors_found = False
         if output:
@@ -658,8 +630,8 @@ Function call:
                     errors_found = True
         else:
             self.errors_list.insert(tk.END, "No output generated.")
-
-        # Disable the Generate Code button if errors are found.
+        
+        # If semantic errors are found, disable the Generate Code button.
         if errors_found:
             self.codegen_button.configure(state="disabled")
 
