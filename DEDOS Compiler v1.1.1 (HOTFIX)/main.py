@@ -597,15 +597,34 @@ Function call:
 
         # Create the semantic analyzer instance.
         sem = Semantic.DEDOSSemantic(Terminals, Sequence)
-        
+
         # Run semantic processing.
         sem.keyval_fix()
         sem.token_type()
-        
+
         # Retrieve output from the semantic analyzer.
         output = sem.Output
-        
-        # Print the output in the error output box.
+
+        # --- Filtering step ---
+        # If output is a list, remove all occurrences of "(" from each element.
+        if output:
+            if isinstance(output, list):
+                filtered_output = []
+                for item in output:
+                    if isinstance(item, str):
+                        # Remove any '(' characters from the string
+                        new_item = item.replace('(', '')
+                        # Optionally, if you want to completely discard lines that are only '(':
+                        if new_item.strip() != "":
+                            filtered_output.append(new_item)
+                    else:
+                        filtered_output.append(item)
+                output = filtered_output
+            elif isinstance(output, str):
+                # Remove any '(' in a string output.
+                output = output.replace('(', '')
+
+        # Print the final (filtered) output in the error output box.
         self.errors_list.delete(0, tk.END)
         errors_found = False
         if output:
@@ -630,8 +649,8 @@ Function call:
                     errors_found = True
         else:
             self.errors_list.insert(tk.END, "No output generated.")
-        
-        # If semantic errors are found, disable the Generate Code button.
+
+        # Disable the Generate Code button if errors are found.
         if errors_found:
             self.codegen_button.configure(state="disabled")
 
